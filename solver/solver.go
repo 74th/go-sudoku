@@ -21,7 +21,7 @@ func solve(numTable *NumTable) {
 	printTable(numTable)
 	// 最初の候補絞り
 	reduceTable(numTable)
-	// 10回解く
+	// 単純に決める
 	for i := 0; i < 10; i++ {
 		solves := solveOneCadidate(numTable)
 		solves = append(solves, solveOneAppeare(numTable)...)
