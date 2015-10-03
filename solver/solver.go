@@ -13,29 +13,31 @@ func main() {
 	table := readTable()
 	applyNormalRule(&table)
 	reverseRule(&table)
-	fmt.Println(table.stricts[0][0])
 	solve(&table)
 }
 
 // Solve
 func solve(numTable *NumTable) {
 	printTable(numTable)
+	// 最初の候補絞り
 	reduceTable(numTable)
-	fmt.Println(numTable.table[5][8])
+	// 10回解く
 	for i := 0; i < 10; i++ {
-		solve := oneCandidate(numTable)
-		fmt.Println(numTable.table[5][8])
-		if !solve {
+		solves := solveOneCadidate(numTable)
+		if len(solves) == 0 {
 			break
+		}
+		for _, solve := range solves {
+			fmt.Println("(", solve.x, ",", solve.y, ")->", solve.num)
+			reduce(numTable, solve.x, solve.y)
 		}
 		printTable(numTable)
 	}
-	fmt.Println(numTable.table[5][8])
 }
 
-// 1つ解く
-func oneCandidate(numTable *NumTable) bool {
-	solveLatestOne := false
+// 候補が1つしかないものを抜き出す
+func solveOneCadidate(numTable *NumTable) []AbleNum {
+	solves := make([]AbleNum, 0, 0)
 	table := &numTable.table
 	for x := 0; x < 9; x++ {
 		for y := 0; y < 9; y++ {
@@ -57,15 +59,12 @@ func oneCandidate(numTable *NumTable) bool {
 				if num != 0 {
 					mass.num = num
 					mass.isSolve = true
-					fmt.Println("(", x, ",", y, ")->", num)
-					reduce(numTable, x, y)
-					fmt.Println(numTable.table[5][8])
-					solveLatestOne = true
+					solves = append(solves, *mass)
 				}
 			}
 		}
 	}
-	return solveLatestOne
+	return solves
 }
 
 // テーブルプリント
@@ -150,7 +149,7 @@ func readTable() NumTable {
 			mass.x = x
 			mass.y = y
 			mass.num, _ = strconv.Atoi(lineStr[y : y+1])
-			for k := 0; k < 9; k++ {
+			for k := 1; k < 10; k++ {
 				mass.candidate[k] = true
 			}
 			if mass.num == 0 {
