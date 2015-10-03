@@ -24,6 +24,7 @@ func solve(numTable *NumTable) {
 	// 10回解く
 	for i := 0; i < 10; i++ {
 		solves := solveOneCadidate(numTable)
+		solves = append(solves, solveOneAppeare(numTable)...)
 		if len(solves) == 0 {
 			break
 		}
@@ -35,7 +36,36 @@ func solve(numTable *NumTable) {
 	}
 }
 
-// 候補が1つしかないものを抜き出す
+// 各グループで、その数字が1つのマスでしか候補でなければ、解とする
+func solveOneAppeare(numTable *NumTable) []AbleNum {
+	solves := make([]AbleNum, 0, 0)
+	table := &numTable.table
+	for _, group := range numTable.groups {
+		for n := 1; n < 10; n++ {
+			isAns := false
+			var ansMass *AbleNum
+			for _, mass := range group.list {
+				if table[mass.x][mass.y].candidate[n] {
+					if isAns {
+						isAns = false
+						break
+					} else {
+						isAns = true
+						ansMass = &table[mass.x][mass.y]
+					}
+				}
+			}
+			if isAns {
+				ansMass.num = n
+				ansMass.isSolve = true
+				solves = append(solves, *ansMass)
+			}
+		}
+	}
+	return solves
+}
+
+// そのマスで、候補が1つの数字しかなければ、解とする
 func solveOneCadidate(numTable *NumTable) []AbleNum {
 	solves := make([]AbleNum, 0, 0)
 	table := &numTable.table
