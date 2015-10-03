@@ -72,7 +72,10 @@ func oneCandidate(numTable *NumTable) bool {
 func printTable(numTable *NumTable) {
 	table := &numTable.table
 	fmt.Println("---")
+	fmt.Println("  012345678")
+	fmt.Println()
 	for x := 0; x < 9; x++ {
+		fmt.Print(x, " ")
 		for y := 0; y < 9; y++ {
 			fmt.Print(table[x][y].num)
 		}
@@ -96,23 +99,13 @@ func reduceTable(numTable *NumTable) {
 // 候補を探す
 func reduce(numTable *NumTable, x int, y int) {
 	table := &numTable.table
-	mass := &table[x][y]
-	// タテ列排除
-	num := mass.num
-	for k := 0; k < 9; k++ {
-		table[x][k].candidate[num] = false
-	}
-	// ヨコ列排除
-	for k := 0; k < 9; k++ {
-		table[k][y].candidate[num] = false
-	}
-	// 9マス調査
-	tate := x - (x % 3)
-	yoko := y - (y % 3)
-	fmt.Println("x", x, ",y", y, ",Tate:", tate, ",Yoko", yoko)
-	for x2 := 0; x2 < 3; x2++ {
-		for y2 := 0; y2 < 3; y2++ {
-			table[tate+x2][yoko+y2].candidate[num] = false
+	num := table[x][y].num
+	groups := numTable.stricts[x][y]
+	for i := 0; i < len(groups); i++ {
+		group := groups[i]
+		for j := 0; j < 9; j++ {
+			mass := group.list[j]
+			table[mass.x][mass.y].candidate[num] = false
 		}
 	}
 }
@@ -136,7 +129,7 @@ type NumPlaMass struct {
 
 // AbleNum マス
 type AbleNum struct {
-	x, y      int
+	NumPlaMass
 	candidate [10]bool
 	isSolve   bool
 	num       int
