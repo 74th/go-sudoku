@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -21,19 +22,70 @@ func solve(numTable *NumTable) {
 	printTable(numTable)
 	// 最初の候補絞り
 	reduceTable(numTable)
-	// 単純に決める
+	// 解く
+	result := testCandidate(numTable, 0)
+	if !result {
+		panic("解が出ませんでした")
+	}
+}
+
+// テストする
+// この関数に来るときには、試しに埋めている
+func testCandidate(numTable *NumTable, depth int) bool {
+	// 10回簡単に解が決まらないか、試行する
 	for i := 0; i < 10; i++ {
 		solves := solveOneCadidate(numTable)
 		solves = append(solves, solveOneAppeare(numTable)...)
+		// 解が増えない場合、break
 		if len(solves) == 0 {
 			break
 		}
+		// 解が出ている場合、その解で候補を狭める
 		for _, solve := range solves {
 			fmt.Println("(", solve.x, ",", solve.y, ")->", solve.num)
 			reduce(numTable, solve.x, solve.y)
 		}
 		printTable(numTable)
 	}
+
+	// 最小の候補を導出する
+	leastCandidateMass, err := searchLeastCandidateMass(numTable)
+	if err != nil {
+		// エラーの場合、候補が無くなった、誤りのマスがあった
+		// この試行は失敗とする
+		return false
+	}
+	if leastCandidateMass == nil {
+		// 全て埋まった場合、この試行は成功とする
+		return true
+	}
+	// まだ候補がある場合、すべての候補でテストする
+	for n := 1; n < 10; n++ {
+		if leastCandidateMass.candidate[n] {
+			// コピーを作成
+			var newNumTable *NumTable
+			newNumTable = &NumTable{
+				groups:  numTable.groups,
+				stricts: numTable.stricts,
+				table:   numTable.table}
+			// この候補以外falseにする
+			mass := &newNumTable.table[leastCandidateMass.x][leastCandidateMass.y]
+			for n2 := 1; n2 < 10; n2++ {
+				if n != n2 {
+					mass.candidate[n2] = false
+				}
+			}
+			// reduceして次の解に進む
+			reduce(newNumTable, leastCandidateMass.x, leastCandidateMass.y)
+			result := testCandidate(newNumTable, depth+1)
+			if result {
+				// 正解と帰ってきた場合、trueを戻す
+				return true
+			}
+		}
+	}
+	// この解では得られなかった場合
+	return false
 }
 
 // 各グループで、その数字が1つのマスでしか候補でなければ、解とする
@@ -139,6 +191,11 @@ func reduce(numTable *NumTable, x int, y int) {
 	}
 }
 
+type TryNum struct {
+	NumPlaMass
+	num int
+}
+
 // NumTable ナンプレ全体
 type NumTable struct {
 	table   [9][9]AbleNum
@@ -162,6 +219,45 @@ type AbleNum struct {
 	candidate [10]bool
 	isSolve   bool
 	num       int
+}
+
+// 候補の少ないマスを探す
+func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, error) {
+
+	table := &numTable.table
+	leastNum := 9
+	leastMass := make([]AbleNum, 0, 81)
+	for x := 0; x < 9; x++ {
+		for y := 0; y < 9; y++ {
+			if !table[x][y].isSolve {
+				candidates := &table[x][y].candidate
+				num := 0
+				for n := 1; n < 9; n++ {
+					if candidates[n] {
+						num++
+					}
+				}
+				if num == leastNum {
+					leastMass = append(leastMass, table[x][y])
+				} else if num < leastNum {
+					leastMass = leastMass[:0]
+					leastMass = append(leastMass, table[x][y])
+					leastNum = num
+				} else if leastNum == 0 {
+					return nil, errors.New("候補がゼロのマスが発見されました")
+				}
+			}
+		}
+	}
+
+	// 最も候補の少ないマスがない
+	// →解けた
+	if len(leastMass) == 0 {
+		return nil, nil
+	}
+	// 1個選定する
+	// TODO
+	return &leastMass[0], nil
 }
 
 // テーブル解読
