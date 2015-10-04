@@ -1,55 +1,45 @@
-package main
+// Package solver 数独ソルバー
+package solver
 
 import (
-	"bufio"
 	"errors"
-	"flag"
-	"fmt"
-	"os"
-	"strconv"
-	"time"
+	"sudoku"
 )
 
 // 正解
-var answer *NumTable
-var finalPoint int
+var _answer *solvingSudoku
+var _finalPoint int
 
-func main() {
-	flag.Parse()
-	table := readTable()
-	printTable(&table)
-
-	startTime := time.Now()
-
-	applyNormalRule(&table)
-	reverseRule(&table)
-	solve(&table)
-
-	dulation := time.Since(startTime)
-	fmt.Println("解が出ました！ ", dulation)
-	fmt.Println("難易度: ", finalPoint)
-	printTable(answer)
-}
-
-// Solve
-func solve(numTable *NumTable) {
-	//printTable(numTable)
+// Solve 解く
+func Solve(s *sudoku.Sudoku) (sudoku.Sudoku, int) {
+	_finalPoint = 0
+	sol := convertSolvingSudoku(*s)
+	// ルールの逆をつくる
+	reverseRule(sol)
 	// 最初の候補絞り
-	reduceTable(numTable)
+	reduceTable(sol)
+
 	// 解く
-	result := testCandidate(numTable, 1, 0)
+	result := testCandidate(sol, 1, 0)
 	if !result {
 		panic("解が出ませんでした")
 	}
+
+	// 解を埋める
+	ans := sudoku.Sudoku{
+		Rules: s.Rules,
+		Table: s.Table}
+	setSolvingSudokuAns(&ans, _answer)
+	return ans, _finalPoint
 }
 
 // テストする
 // この関数に来るときには、試しに埋めている
-func testCandidate(numTable *NumTable, depth int, point int) bool {
+func testCandidate(sudoku *solvingSudoku, depth int, point int) bool {
 	// 10回簡単に解が決まらないか、試行する
 	for i := 0; i < 81; i++ {
-		solves := solveOneCadidate(numTable)
-		solves = append(solves, solveOneAppeare(numTable)...)
+		solves := solveOneCadidate(sudoku)
+		solves = append(solves, solveOneAppeare(sudoku)...)
 		// 解が増えない場合、break
 		if len(solves) == 0 {
 			break
@@ -59,13 +49,13 @@ func testCandidate(numTable *NumTable, depth int, point int) bool {
 			//fmt.Println(depth, ":(", solve.x, ",", solve.y, ")->", solve.num)
 			// 深さを10点とする
 			point = point + depth*(i+1)
-			reduce(numTable, solve.x, solve.y)
+			reduce(sudoku, solve.X, solve.Y)
 		}
-		//printTable(numTable)
+		//printTable(sudoku)
 	}
 
 	// 最小の候補を導出する
-	leastCandidateMass, num, err := searchLeastCandidateMass(numTable)
+	leastCandidateMass, num, err := searchLeastCandidateMass(sudoku)
 	point = point + num*100
 	if err != nil {
 		// エラーの場合、候補が無くなった、誤りのマスがあった
@@ -76,10 +66,10 @@ func testCandidate(numTable *NumTable, depth int, point int) bool {
 	if leastCandidateMass == nil {
 		// 全て埋まった場合、この試行は成功とする
 		// 解答チェック（同時解答で駄目なパターンあり）
-		result := collectAnswer(numTable)
+		result := collectAnswer(sudoku)
 		if result {
-			answer = numTable
-			finalPoint = point
+			_answer = sudoku
+			_finalPoint = point
 			return true
 		}
 		return false
@@ -88,27 +78,27 @@ func testCandidate(numTable *NumTable, depth int, point int) bool {
 	for n := 1; n < 10; n++ {
 		if leastCandidateMass.candidate[n] {
 			// コピーを作成
-			var newNumTable *NumTable
-			newNumTable = &NumTable{
-				groups:  numTable.groups,
-				stricts: numTable.stricts,
-				table:   numTable.table}
+			var newsolvingSudoku *solvingSudoku
+			newsolvingSudoku = &solvingSudoku{
+				Rules:   sudoku.Rules,
+				stricts: sudoku.stricts,
+				Table:   sudoku.Table}
 			// この候補以外falseにする
-			mass := &newNumTable.table[leastCandidateMass.x][leastCandidateMass.y]
+			mass := &newsolvingSudoku.Table[leastCandidateMass.X][leastCandidateMass.Y]
 			for n2 := 1; n2 < 10; n2++ {
 				if n != n2 {
 					mass.candidate[n2] = false
 				}
 			}
 			// reduceして次の解に進む
-			reduce(newNumTable, leastCandidateMass.x, leastCandidateMass.y)
+			reduce(newsolvingSudoku, leastCandidateMass.X, leastCandidateMass.Y)
 			//fmt.Println(depth, ":Test(", mass.x, ",", mass.y, ")->", n)
-			result := collectAnswer(newNumTable)
+			result := collectAnswer(newsolvingSudoku)
 			if !result {
 				// 同時回答で謝るケースあり
 				return false
 			}
-			result = testCandidate(newNumTable, depth+1, point)
+			result = testCandidate(newsolvingSudoku, depth+1, point)
 			if result {
 				// 正解と帰ってきた場合、trueを戻す
 				return true
@@ -121,26 +111,26 @@ func testCandidate(numTable *NumTable, depth int, point int) bool {
 }
 
 // 各グループで、その数字が1つのマスでしか候補でなければ、解とする
-func solveOneAppeare(numTable *NumTable) []AbleNum {
-	solves := make([]AbleNum, 0, 0)
-	table := &numTable.table
-	for _, group := range numTable.groups {
+func solveOneAppeare(sudoku *solvingSudoku) []solvingMass {
+	solves := make([]solvingMass, 0, 0)
+	table := &sudoku.Table
+	for _, rule := range sudoku.Rules {
 		for n := 1; n < 10; n++ {
 			isAns := false
-			var ansMass *AbleNum
-			for _, mass := range group.list {
-				if table[mass.x][mass.y].candidate[n] {
+			var ansMass *solvingMass
+			for _, mass := range rule.List {
+				if table[mass.X][mass.Y].candidate[n] {
 					if isAns {
 						isAns = false
 						break
 					} else {
 						isAns = true
-						ansMass = &table[mass.x][mass.y]
+						ansMass = &table[mass.X][mass.Y]
 					}
 				}
 			}
 			if isAns {
-				ansMass.num = n
+				ansMass.Num = n
 				ansMass.isSolve = true
 				solves = append(solves, *ansMass)
 			}
@@ -150,9 +140,9 @@ func solveOneAppeare(numTable *NumTable) []AbleNum {
 }
 
 // そのマスで、候補が1つの数字しかなければ、解とする
-func solveOneCadidate(numTable *NumTable) []AbleNum {
-	solves := make([]AbleNum, 0, 0)
-	table := &numTable.table
+func solveOneCadidate(sudoku *solvingSudoku) []solvingMass {
+	solves := make([]solvingMass, 0, 0)
+	table := &sudoku.Table
 	for x := 0; x < 9; x++ {
 		for y := 0; y < 9; y++ {
 			if !table[x][y].isSolve {
@@ -171,7 +161,7 @@ func solveOneCadidate(numTable *NumTable) []AbleNum {
 					}
 				}
 				if num != 0 {
-					mass.num = num
+					mass.Num = num
 					mass.isSolve = true
 					solves = append(solves, *mass)
 				}
@@ -181,85 +171,53 @@ func solveOneCadidate(numTable *NumTable) []AbleNum {
 	return solves
 }
 
-// テーブルプリント
-func printTable(numTable *NumTable) {
-	table := &numTable.table
-	fmt.Println("---")
-	fmt.Println("  012345678")
-	fmt.Println()
-	for x := 0; x < 9; x++ {
-		fmt.Print(x, " ")
-		for y := 0; y < 9; y++ {
-			fmt.Print(table[x][y].num)
-		}
-		fmt.Println()
-	}
-	fmt.Println("---")
-}
-
 // 候補を削除する
-func reduceTable(numTable *NumTable) {
-	table := &numTable.table
+func reduceTable(sudoku *solvingSudoku) {
+	table := &sudoku.Table
 	for x := 0; x < 9; x++ {
 		for y := 0; y < 9; y++ {
 			if table[x][y].isSolve {
-				reduce(numTable, x, y)
+				reduce(sudoku, x, y)
 			}
 		}
 	}
 }
 
 // 候補を探す
-func reduce(numTable *NumTable, x int, y int) {
-	table := &numTable.table
-	num := table[x][y].num
-	groups := numTable.stricts[x][y]
-	for i := 0; i < len(groups); i++ {
-		group := groups[i]
+func reduce(sudoku *solvingSudoku, x int, y int) {
+	table := &sudoku.Table
+	num := table[x][y].Num
+	rules := sudoku.stricts[x][y]
+	for i := 0; i < len(rules); i++ {
+		rule := rules[i]
 		for j := 0; j < 9; j++ {
-			mass := group.list[j]
-			table[mass.x][mass.y].candidate[num] = false
+			mass := rule.List[j]
+			table[mass.X][mass.Y].candidate[num] = false
 		}
 	}
 }
 
-// TryNum ナンプレ
-type TryNum struct {
-	NumPlaMass
-	num int
+// solvingSudoku ナンプレ全体
+type solvingSudoku struct {
+	Table   [9][9]solvingMass
+	Rules   []sudoku.Rule
+	stricts [9][9][]sudoku.Rule
 }
 
-// NumTable ナンプレ全体
-type NumTable struct {
-	table   [9][9]AbleNum
-	groups  []NumPlaGroup
-	stricts [9][9][]NumPlaGroup
-}
-
-// NumPlaGroup ナンプレグループ
-type NumPlaGroup struct {
-	list [9]NumPlaMass
-}
-
-// NumPlaMass ナンプレマス
-type NumPlaMass struct {
-	x, y int
-}
-
-// AbleNum マス
-type AbleNum struct {
-	NumPlaMass
+// solvingMass マス
+type solvingMass struct {
+	X, Y      int
+	Num       int
 	candidate [10]bool
 	isSolve   bool
-	num       int
 }
 
 // 候補の少ないマスを探す
-func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, int, error) {
+func searchLeastCandidateMass(solvingSudoku *solvingSudoku) (*solvingMass, int, error) {
 
-	table := &numTable.table
+	table := &solvingSudoku.Table
 	leastNum := 9
-	leastMass := make([]AbleNum, 0, 81)
+	leastMass := make([]solvingMass, 0, 81)
 	for x := 0; x < 9; x++ {
 		for y := 0; y < 9; y++ {
 			if !table[x][y].isSolve {
@@ -293,111 +251,25 @@ func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, int, error) {
 	return &leastMass[0], leastNum, nil
 }
 
-// テーブル解読
-func readTable() NumTable {
-	numTable := NumTable{}
-	table := &numTable.table
-
-	fs, _ := os.Open(flag.Arg(0))
-	reader := bufio.NewReaderSize(fs, 4096)
-	for x := 0; x < 9; x++ {
-		lineByte, _, _ := reader.ReadLine()
-		lineStr := string(lineByte)
-		for y := 0; y < 9; y++ {
-			mass := &table[x][y]
-			mass.x = x
-			mass.y = y
-			mass.num, _ = strconv.Atoi(lineStr[y : y+1])
-			for k := 1; k < 10; k++ {
-				mass.candidate[k] = true
-			}
-			if mass.num == 0 {
-				mass.isSolve = false
-			} else {
-				mass.isSolve = true
-			}
-
-		}
-	}
-	return numTable
-}
-
-// 標準ルール
-func applyNormalRule(numTable *NumTable) {
-	groups := make([]NumPlaGroup, 0, 27)
-	groups = append(groups, makeTateRule()...)
-	groups = append(groups, makeYokoRule()...)
-	groups = append(groups, makeBoxRule()...)
-	numTable.groups = groups
-}
-
-// 縦ルール
-func makeTateRule() []NumPlaGroup {
-	groups := make([]NumPlaGroup, 0, 9)
-	for x := 0; x < 9; x++ {
-		group := NumPlaGroup{}
-		for y := 0; y < 9; y++ {
-			group.list[y].x = x
-			group.list[y].y = y
-		}
-		groups = append(groups, group)
-	}
-	return groups
-}
-
-// 横ルール
-func makeYokoRule() []NumPlaGroup {
-	groups := make([]NumPlaGroup, 0, 9)
-	for y := 0; y < 9; y++ {
-		group := NumPlaGroup{}
-		for x := 0; x < 9; x++ {
-			group.list[x].x = x
-			group.list[x].y = y
-		}
-		groups = append(groups, group)
-	}
-	return groups
-}
-
-// 3x3 マスずつのルール
-func makeBoxRule() []NumPlaGroup {
-	groups := make([]NumPlaGroup, 0, 9)
-	for x1 := 0; x1 < 3; x1++ {
-		for y1 := 0; y1 < 3; y1++ {
-			group := NumPlaGroup{}
-			i := 0
-			for x2 := 0; x2 < 3; x2++ {
-				for y2 := 0; y2 < 3; y2++ {
-					group.list[i].x = x1*3 + x2
-					group.list[i].y = y1*3 + y2
-					i = i + 1
-				}
-			}
-			groups = append(groups, group)
-		}
-	}
-	return groups
-}
-
 // ルールを裏返す
-func reverseRule(numTable *NumTable) {
-	groupLen := len(numTable.groups)
-	for i := 0; i < groupLen; i++ {
-		group := &numTable.groups[i]
-		for i := 0; i < len(group.list); i++ {
-			mass := group.list[i]
-			numTable.stricts[mass.x][mass.y] = append(numTable.stricts[mass.x][mass.y], *group)
+func reverseRule(solvingSudoku *solvingSudoku) {
+	ruleLen := len(solvingSudoku.Rules)
+	for i := 0; i < ruleLen; i++ {
+		rule := &solvingSudoku.Rules[i]
+		for i := 0; i < len(rule.List); i++ {
+			mass := rule.List[i]
+			solvingSudoku.stricts[mass.X][mass.Y] = append(solvingSudoku.stricts[mass.X][mass.Y], *rule)
 		}
 	}
 }
 
 // 回答の整合性チェック
-func collectAnswer(numTable *NumTable) bool {
-	table := &numTable.table
-	for _, group := range numTable.groups {
+func collectAnswer(solvingSudoku *solvingSudoku) bool {
+	table := &solvingSudoku.Table
+	for _, rule := range solvingSudoku.Rules {
 		nums := [9]bool{true, true, true, true, true, true, true, true, true}
-		for _, mass := range group.list {
-			num := table[mass.x][mass.y].num
+		for _, mass := range rule.List {
+			num := table[mass.X][mass.Y].Num
 			if num == 0 {
 				continue
 			}
@@ -410,4 +282,31 @@ func collectAnswer(numTable *NumTable) bool {
 		}
 	}
 	return true
+}
+
+// 数独から解く形式への変換
+func convertSolvingSudoku(s sudoku.Sudoku) *solvingSudoku {
+	result := solvingSudoku{Rules: s.Rules}
+	for x := 0; x < 9; x++ {
+		for y := 0; y < 9; y++ {
+			result.Table[x][y] = solvingMass{
+				X:       x,
+				Y:       y,
+				Num:     s.Table[x][y].Num,
+				isSolve: s.Table[x][y].Num != 0}
+			for i := 1; i < 10; i++ {
+				result.Table[x][y].candidate[i] = true
+			}
+		}
+	}
+	return &result
+}
+
+// 数独から解く形式への変換
+func setSolvingSudokuAns(s *sudoku.Sudoku, sol *solvingSudoku) {
+	for x := 0; x < 9; x++ {
+		for y := 0; y < 9; y++ {
+			s.Table[x][y].Num = sol.Table[x][y].Num
+		}
+	}
 }
