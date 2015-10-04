@@ -7,14 +7,21 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"time"
 )
 
 func main() {
 	flag.Parse()
 	table := readTable()
+
+	startTime := time.Now()
+
 	applyNormalRule(&table)
 	reverseRule(&table)
 	solve(&table)
+
+	dulation := time.Since(startTime)
+	fmt.Println("解が出ました！ ", dulation)
 }
 
 // Solve
@@ -33,7 +40,7 @@ func solve(numTable *NumTable) {
 // この関数に来るときには、試しに埋めている
 func testCandidate(numTable *NumTable, depth int) bool {
 	// 10回簡単に解が決まらないか、試行する
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 81; i++ {
 		solves := solveOneCadidate(numTable)
 		solves = append(solves, solveOneAppeare(numTable)...)
 		// 解が増えない場合、break
@@ -42,7 +49,7 @@ func testCandidate(numTable *NumTable, depth int) bool {
 		}
 		// 解が出ている場合、その解で候補を狭める
 		for _, solve := range solves {
-			fmt.Println("(", solve.x, ",", solve.y, ")->", solve.num)
+			fmt.Println(depth, ":(", solve.x, ",", solve.y, ")->", solve.num)
 			reduce(numTable, solve.x, solve.y)
 		}
 		printTable(numTable)
@@ -57,7 +64,8 @@ func testCandidate(numTable *NumTable, depth int) bool {
 	}
 	if leastCandidateMass == nil {
 		// 全て埋まった場合、この試行は成功とする
-		return true
+		// 解答チェック（同時解答で駄目なパターンあり）
+		return collectAnswer(numTable)
 	}
 	// まだ候補がある場合、すべての候補でテストする
 	for n := 1; n < 10; n++ {
@@ -77,7 +85,13 @@ func testCandidate(numTable *NumTable, depth int) bool {
 			}
 			// reduceして次の解に進む
 			reduce(newNumTable, leastCandidateMass.x, leastCandidateMass.y)
-			result := testCandidate(newNumTable, depth+1)
+			fmt.Println(depth, ":Test(", mass.x, ",", mass.y, ")->", n)
+			result := collectAnswer(newNumTable)
+			if !result {
+				// 同時回答で謝るケースあり
+				return false
+			}
+			result = testCandidate(newNumTable, depth+1)
 			if result {
 				// 正解と帰ってきた場合、trueを戻す
 				return true
@@ -191,6 +205,7 @@ func reduce(numTable *NumTable, x int, y int) {
 	}
 }
 
+// TryNum ナンプレ
 type TryNum struct {
 	NumPlaMass
 	num int
@@ -356,4 +371,26 @@ func reverseRule(numTable *NumTable) {
 			numTable.stricts[mass.x][mass.y] = append(numTable.stricts[mass.x][mass.y], *group)
 		}
 	}
+}
+
+// 回答の整合性チェック
+func collectAnswer(numTable *NumTable) bool {
+	table := &numTable.table
+	for _, group := range numTable.groups {
+		nums := [9]bool{true, true, true, true, true, true, true, true, true}
+		for _, mass := range group.list {
+			num := table[mass.x][mass.y].num
+			if num == 0 {
+				continue
+			}
+			if nums[num-1] {
+				nums[num-1] = false
+			} else {
+				printTable(numTable)
+				fmt.Println("(", mass.x, ",", mass.y, ")にて重複した解答発見")
+				return false
+			}
+		}
+	}
+	return true
 }
