@@ -10,9 +10,14 @@ import (
 	"time"
 )
 
+// 正解
+var answer *NumTable
+var finalPoint int
+
 func main() {
 	flag.Parse()
 	table := readTable()
+	printTable(&table)
 
 	startTime := time.Now()
 
@@ -22,15 +27,17 @@ func main() {
 
 	dulation := time.Since(startTime)
 	fmt.Println("解が出ました！ ", dulation)
+	fmt.Println("難易度: ", finalPoint)
+	printTable(answer)
 }
 
 // Solve
 func solve(numTable *NumTable) {
-	printTable(numTable)
+	//printTable(numTable)
 	// 最初の候補絞り
 	reduceTable(numTable)
 	// 解く
-	result := testCandidate(numTable, 0)
+	result := testCandidate(numTable, 1, 0)
 	if !result {
 		panic("解が出ませんでした")
 	}
@@ -38,7 +45,7 @@ func solve(numTable *NumTable) {
 
 // テストする
 // この関数に来るときには、試しに埋めている
-func testCandidate(numTable *NumTable, depth int) bool {
+func testCandidate(numTable *NumTable, depth int, point int) bool {
 	// 10回簡単に解が決まらないか、試行する
 	for i := 0; i < 81; i++ {
 		solves := solveOneCadidate(numTable)
@@ -49,23 +56,33 @@ func testCandidate(numTable *NumTable, depth int) bool {
 		}
 		// 解が出ている場合、その解で候補を狭める
 		for _, solve := range solves {
-			fmt.Println(depth, ":(", solve.x, ",", solve.y, ")->", solve.num)
+			//fmt.Println(depth, ":(", solve.x, ",", solve.y, ")->", solve.num)
+			// 深さを10点とする
+			point = point + depth*(i+1)
 			reduce(numTable, solve.x, solve.y)
 		}
-		printTable(numTable)
+		//printTable(numTable)
 	}
 
 	// 最小の候補を導出する
-	leastCandidateMass, err := searchLeastCandidateMass(numTable)
+	leastCandidateMass, num, err := searchLeastCandidateMass(numTable)
+	point = point + num*100
 	if err != nil {
 		// エラーの場合、候補が無くなった、誤りのマスがあった
 		// この試行は失敗とする
+		//fmt.Println(depth, ":REVERSE")
 		return false
 	}
 	if leastCandidateMass == nil {
 		// 全て埋まった場合、この試行は成功とする
 		// 解答チェック（同時解答で駄目なパターンあり）
-		return collectAnswer(numTable)
+		result := collectAnswer(numTable)
+		if result {
+			answer = numTable
+			finalPoint = point
+			return true
+		}
+		return false
 	}
 	// まだ候補がある場合、すべての候補でテストする
 	for n := 1; n < 10; n++ {
@@ -85,13 +102,13 @@ func testCandidate(numTable *NumTable, depth int) bool {
 			}
 			// reduceして次の解に進む
 			reduce(newNumTable, leastCandidateMass.x, leastCandidateMass.y)
-			fmt.Println(depth, ":Test(", mass.x, ",", mass.y, ")->", n)
+			//fmt.Println(depth, ":Test(", mass.x, ",", mass.y, ")->", n)
 			result := collectAnswer(newNumTable)
 			if !result {
 				// 同時回答で謝るケースあり
 				return false
 			}
-			result = testCandidate(newNumTable, depth+1)
+			result = testCandidate(newNumTable, depth+1, point)
 			if result {
 				// 正解と帰ってきた場合、trueを戻す
 				return true
@@ -99,6 +116,7 @@ func testCandidate(numTable *NumTable, depth int) bool {
 		}
 	}
 	// この解では得られなかった場合
+	//fmt.Println(depth, ":ENDREVERSE")
 	return false
 }
 
@@ -237,7 +255,7 @@ type AbleNum struct {
 }
 
 // 候補の少ないマスを探す
-func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, error) {
+func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, int, error) {
 
 	table := &numTable.table
 	leastNum := 9
@@ -259,7 +277,7 @@ func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, error) {
 					leastMass = append(leastMass, table[x][y])
 					leastNum = num
 				} else if leastNum == 0 {
-					return nil, errors.New("候補がゼロのマスが発見されました")
+					return nil, 0, errors.New("候補がゼロのマスが発見されました")
 				}
 			}
 		}
@@ -268,11 +286,11 @@ func searchLeastCandidateMass(numTable *NumTable) (*AbleNum, error) {
 	// 最も候補の少ないマスがない
 	// →解けた
 	if len(leastMass) == 0 {
-		return nil, nil
+		return nil, 0, nil
 	}
 	// 1個選定する
 	// TODO
-	return &leastMass[0], nil
+	return &leastMass[0], leastNum, nil
 }
 
 // テーブル解読
@@ -386,8 +404,7 @@ func collectAnswer(numTable *NumTable) bool {
 			if nums[num-1] {
 				nums[num-1] = false
 			} else {
-				printTable(numTable)
-				fmt.Println("(", mass.x, ",", mass.y, ")にて重複した解答発見")
+				//fmt.Println("(", mass.x, ",", mass.y, ")にて重複した解答発見")
 				return false
 			}
 		}
